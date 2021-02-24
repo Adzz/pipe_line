@@ -37,7 +37,10 @@ aka design goals
 4. Easy (extensible) telemetry for each step
 5. Probably needs an async story...? Though I'd rather leave that up to the user by for example having one step that spins its own tasks off and handles supervision etc itself. Having steps run async adds complexity and probably won't serve all use cases.
 6. Merge pipelines
-
+7. Mocking should be easy - we should be able to assert that the functions in the pipeline
+get called with the right args. Then have seperate unit tests for the functions. This should
+be opt-in but easy to do. is it just part of how you use pipelines? Are pipelines just
+objects ?
 
 What does it mean to map a pipeline? it would mean iterating through it and doing
 something to each step in it. So for us it would be iterating through each step and

@@ -3,6 +3,8 @@ defmodule PipeLine.Step do
   defstruct @enforce_keys
 
   @moduledoc """
+  A PipeLine.Step is the action you want to take at a given point in a PipeLine. It can
+  optionally include an on_error callback which will be called if the step's action fails.
   """
 
   @doc """
@@ -27,14 +29,27 @@ defmodule PipeLine.Step do
   end
 
   @doc """
-  Returns a new Pipeline.Step with the given action and on_error. The action should take
-  and return a PipeLine. The on_error will be given the result of the PipeLine.Step that
-  failed, and the PipeLine that step was in. That gives you enough information to react
-  accordingly to the error.
+  Returns a new Pipeline.Step with the given action and options. See options below for the
+  full list.
+
+  The action will be given the pipeline's state and whatever the action returns will be
+  the new pipeline state.
+
+  ### Options
+
+    * `on_error: fn error, pipeline -> ... end` - Will be run if the Step's action fails
+    by returning an error tuple. The `on_error` function will be given the error from the
+    failing step and the whole pipeline. A pipeline will step through all of the on_error
+    callbacks given in a pipeline starting with the step that failed and working backward
+    to the first step.
+
+  ### Examples
+
+
   """
-  def new(action, opts) do
+  def new(action, opts \\ []) do
     # We can default to ID or make it nil. Not sure which is quicker.
-    on_error = Keyword.get(opts, :on_error, & &1)
+    on_error = Keyword.get(opts, :on_error, fn _error, _pipe_line -> :no_op end)
 
     action = fn %PipeLine{state: state} = pipeline ->
       %{pipeline | state: action.(state)}
@@ -44,11 +59,25 @@ defmodule PipeLine.Step do
   end
 
   @doc """
-  Meta steps are steps whose action take and return a pipeline. Their on_error callback
-  still gets passed the result of the step's action in the case of failure.
+  Returns a new Pipeline.Step with the given action and options. See options below for the
+  full list.
 
-  - rescue any error if you get one on a step failure, run the compensating fn(s) and
-  re-raise the offending error (with the original stack trace hopefully).
+  Meta steps are steps whose action take and return a pipeline, meaning the action will be
+  given the entire pipeline on each call. It's up to you to decide what to do with it. This
+  allows meta capabilities, like having a step that adds a step. The on_error callback works
+  the same as for `new`
+
+  ### Options
+
+    * `on_error: fn error, pipeline -> ... end` - Will be run if the Step's action fails
+    by returning an error tuple. The `on_error` function will be given the error from the
+    failing step and the whole pipeline. A pipeline will step through all of the on_error
+    callbacks given in a pipeline starting with the step that failed and working backward
+    to the first step.
+
+  ### Examples
+
+
   """
   def new_meta_step(action, on_error) when is_function(on_error, 2) and is_function(action, 1) do
     %__MODULE__{action: action, on_error: on_error}
