@@ -160,15 +160,16 @@ defmodule PipeLine do
     %{pipeline | steps: {rest, [step | seen]}}
   end
 
+  defp previous_step(%__MODULE__{steps: {seen, [step | rest]}} = pipeline) do
+    %{pipeline | steps: {[step | seen], rest}}
+  end
+
   defp compensate(%__MODULE__{steps: {_seen, []}} = pipeline, error) do
     error
   end
 
   defp compensate(%__MODULE__{steps: {seen, [step | rest]}} = pipeline, error) do
-    prev_step = %{pipeline | steps: {[step | seen], rest}}
-    step.on_error(error, prev_step)
-    compensate(prev_step, error)
+    # The on_error should return a pipeline so on_error can alter the pipeline too.
+    compensate(previous_step(PipeLine.Step.compensate(step, error, pipeline)), error)
   end
-
-  # PipeLine.map that allows us to hook into the step run is probably good ?
 end
