@@ -195,6 +195,8 @@ defmodule PipeLine.Step do
     new_meta_step({mod, fun, [args]}, on_error)
   end
 
+
+
   def new(action, opts) do
     # We can default to ID or make it nil and handle that. Not sure which is quicker.
     on_error = on_error_from_opts(opts)
@@ -277,3 +279,10 @@ defmodule PipeLine.Step do
     action.(pipeline)
   end
 end
+
+
+
+
+
+
+

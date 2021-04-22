@@ -14,11 +14,25 @@ defmodule PipeLineTest do
 
   describe "add_steps/2" do
     test "Appends the given steps to the pipeline" do
-      add_one = fn number -> number + 1 end
 
       pipe_line =
         PipeLine.new(%{})
-        |> PipeLine.add_steps([PipeLine.Step.new(add_one)])
+        |> PipeLine.add_steps([{Kernel, :+, [1]}])
+
+      assert PipeLine.steps == [{Kernel, :+, [1]}]
+
+
+      add_one = fn number -> number + 1 end
+
+      defmodule Thing do
+        def log(a) do
+          IO.inspect(a)
+        end
+      end
+
+      pipe_line =
+        PipeLine.new(1)
+        |> PipeLine.add_steps([{Kernel, :+, [2]}])
 
       # Right so what makes this tricky is that it's now hard to assert on the data structure.
       # because functions don't have identity, meaning we can only assert it is XX function by
@@ -26,6 +40,9 @@ defmodule PipeLineTest do
 
       # 1. MFA - enforce mod fun args. Now we can say which fn it is.
       # BUT - cant pass anon fns. Mocking is trickier (as it will be different mfa but because we dont call might be fine)
+
+      # Oh interesting is that we can allow more args! We can have more than 1 arg fns and just append
+      # the state to the list of args.
 
       # 2. We accept modules that implement a behaviour to become a step. Then you can assert on the Mod
       #    and test and unit test is separately...

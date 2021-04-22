@@ -5,6 +5,21 @@ defmodule PipeLine do
   @enforce_keys [:state, :steps]
   defstruct [:state, :steps, errors: [], valid?: true]
 
+  # remove meta... Does that make it simpler? Means MFA tuples or Atoms are easy.
+  # %PipeLine{
+  #   state: 1.
+  #   steps: [
+  #     %Step{action: fn s -> s + 1 end, on_error: & &1}
+  #   ]
+  # }
+
+  # %PipeLine{
+  #   state: 1.
+  #   steps: [
+  #     %Step{action: fn n -> n + 2 end, on_error: & &1}
+  #   ]
+  # }
+
   @type t :: %__MODULE__{}
   @moduledoc """
   """
@@ -140,14 +155,13 @@ defmodule PipeLine do
   # This is like how we recur through the steps and call the actions. It encapsulates the
   # idea of compensating when there is an error. We don't capture exceptions because that
   # should be handles in the on_error itself if it is important.
-  # Is this a recursion scheme? Who knows.
   defp do_run_while_do_run_run(%__MODULE__{steps: {[], _seen}} = result) do
     {:done, result}
   end
 
   defp do_run_while_do_run_run(%__MODULE__{steps: {[step | _rest], _seen}} = pipeline) do
     case PipeLine.Step.run_action(step, pipeline) do
-      # {:error, term} -> compensate(pipeline, term)
+      {:error, term} -> compensate(pipeline, term)
       # We increment the step after we run it.
       {:cont, %PipeLine{} = result} -> do_run_while_do_run_run(next_step(result))
       {:suspend, %PipeLine{} = result} -> {:suspended, next_step(result), &run_while/1}
@@ -164,7 +178,7 @@ defmodule PipeLine do
     %{pipeline | steps: {[step | seen], rest}}
   end
 
-  defp compensate(%__MODULE__{steps: {_seen, []}} = pipeline, error) do
+  defp compensate(%__MODULE__{steps: {_seen, []}}, error) do
     error
   end
 
