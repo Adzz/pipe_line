@@ -1,7 +1,4 @@
 defmodule PipeLine do
-  # REALLY EACH STEP SHOULD HAVE AN ERROR NOT THE ROOT.
-  # root can still have valid?. Actually cool to think about "it's valid if X% of steps have no errors"
-  # or whatever.
   @enforce_keys [:state, :steps]
   defstruct [:state, :steps, errors: [], valid?: true]
 
@@ -30,69 +27,36 @@ defmodule PipeLine do
     %__MODULE__{state: state, steps: {[], []}}
   end
 
-  # @doc """
-  # Adds a step to the pipeline. A PipeLine.Step takes and returns a PipeLine, usually with
-  # updated state.
-
-  # two options when adding a step, you pass a step, or you pass the attrs for a step and
-  # step is somewhat opaque:
-
-  # step = PipeLine.Step.new(fn %{state: state} -> state + 1 end, on_error: & &1)
-  # PipeLine.new()
-  # |> PipeLine.add_step(step)
-
-  # VS
-
-  # PipeLine.new()
-  # |> PipeLine.add_step(fn pipe -> end, on_error: & &1)
-
-  # a state_step is a step that takes and returns the pipeline state.
-  # What's tricky is the opts... ie on error, do they provide an on error that is
-  # meta or not ? If they should be the same as the action how do we keep them in step...
-
-  # In fact on_error arguably have 2 params. the error from executing the action, and the
-  # pipeline that the step was in...
-
-  # Do we provide options for only run the latest on_error (the on_error of the step that
-  # failed) or run all on_errors on each step - tricky if we provide a default. Also tricky
-  # if provide multiple fns how do we ensure they all run... Copy Sage here I guess??
-
-  # # Although there is no real need to have a rollback for each step. You can technically
-  # implement each step to have a rollback which is all of the previous rollbacks combined
-  # and then manually figure out your own retry strategies etc.
-  # """
-  # # def add_state_step(%__MODULE__{steps: {steps, seen}} = pipeline, action, opts \\ []) do
-  # #   on_error = Keyword.get(opts, :on_error, pipeline.on_error)
-
-  # #   action = fn %PipeLine{state: state} = pipeline ->
-  # #     %{pipeline | state: action.(state)}
-  # #   end
-
-  # #   steps = {steps ++ [PipeLine.Step.new(action, on_error)], seen}
-  # #   %{pipeline | steps: steps}
-  # # end
-
-  # # def add_step(%__MODULE__{steps: {steps, seen}} = pipeline, %PipeLine.Step{} = step) do
-  # #   %{pipeline | steps: {steps ++ [step], seen}}
-  # # end
-
-  # # @doc """
-  # # A meta step is a step in the pipeline that takes and returns a pipeline. This is the
-  # # default contract for a step in a pipeline.
-  # # """
-  # # def add_meta_step(%__MODULE__{steps: {steps, seen}} = pipeline, action, opts \\ []) do
-  # #   on_error = Keyword.get(opts, :on_error, pipeline.on_error)
-  # #   steps = {steps ++ [PipeLine.Step.new(action, on_error)], seen}
-  # #   %{pipeline | steps: steps}
-  # # end
-
   @doc """
   Appends the list of steps to the PipeLine's steps. Each step must be a PipeLine.Step
   though no checking is done on the steps, if you don't provide steps you will have a bad
   time when you run it.
   """
   def add_steps(%__MODULE__{steps: {existing, seen}} = pipeline, steps) do
+    steps =
+      Enum.map(steps, fn
+        %PipeLine.Step{} = step -> step
+        {action, undo} -> PipeLine.Step.new(action, on_error: undo)
+        action -> PipeLine.Step.new(action)
+      end)
+
     %{pipeline | steps: {existing ++ steps, seen}}
+  end
+
+  @doc """
+  Appends a step to the end of the pipeline.
+  """
+  def add_step(%__MODULE__{steps: {existing, seen}} = pipeline, %PipeLine.Step{} = step) do
+    %{pipeline | steps: {existing ++ [step], seen}}
+  end
+
+  def add_step(%__MODULE__{steps: {existing, seen}} = pipeline, {step, undo}) do
+    step = PipeLine.Step.new(step, on_error: undo)
+    %{pipeline | steps: {existing ++ [step], seen}}
+  end
+
+  def add_step(%__MODULE__{steps: {existing, seen}} = pipeline, step) do
+    %{pipeline | steps: {existing ++ [PipeLine.Step.new(step)], seen}}
   end
 
   @doc """
@@ -149,8 +113,8 @@ defmodule PipeLine do
     case PipeLine.Step.run_action(step, pipeline) do
       # {:error, term} -> compensate(pipeline, term)
       # We increment the step after we run it.
-      {:cont, %PipeLine{} = result} -> do_run_while_do_run_run(next_step(result))
-      {:suspend, %PipeLine{} = result} -> {:suspended, next_step(result), &run_while/1}
+      {:cont, state} -> do_run_while_do_run_run(%{next_step(pipeline) | state: state})
+      {:suspend, state} -> {:suspended, %{next_step(pipeline) | state: state}, &run_while/1}
       {:halt, term} -> {:halted, term}
       _ -> raise "Error"
     end

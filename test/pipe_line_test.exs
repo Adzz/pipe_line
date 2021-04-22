@@ -15,46 +15,68 @@ defmodule PipeLineTest do
   describe "add_steps/2" do
     test "Appends the given steps to the pipeline" do
       add_one = fn number -> number + 1 end
+      add_two = fn n -> n + 2 end
+      undo = fn _error, _state -> "some side effect" end
 
-      pipe_line =
+      pipeline = PipeLine.new(1) |> PipeLine.add_steps([add_one, {add_two, undo}])
+
+      assert pipeline.state == 1
+      {[%PipeLine.Step{} = one_step, %PipeLine.Step{} = two_step], _} = pipeline.steps
+
+      assert one_step.action == add_one
+      assert two_step.action == add_two
+      assert two_step.on_error == undo
+
+      pipeline =
         PipeLine.new(%{})
-        |> PipeLine.add_steps([PipeLine.Step.new(add_one)])
+        |> PipeLine.add_steps([
+          PipeLine.Step.new(add_one),
+          PipeLine.Step.new(add_two, on_error: undo)
+        ])
 
-      # Right so what makes this tricky is that it's now hard to assert on the data structure.
-      # because functions don't have identity, meaning we can only assert it is XX function by
-      # calling it. Which isn't ideal if we want to like mock tests. SO... what are the alternatives?
+      assert pipeline.state == %{}
+      {[%PipeLine.Step{} = one_step, %PipeLine.Step{} = two_step], _} = pipeline.steps
 
-      # 1. MFA - enforce mod fun args. Now we can say which fn it is.
-      # BUT - cant pass anon fns. Mocking is trickier (as it will be different mfa but because we dont call might be fine)
+      assert one_step.action == add_one
+      assert two_step.action == add_two
+      assert two_step.on_error == undo
+    end
+  end
 
-      # 2. We accept modules that implement a behaviour to become a step. Then you can assert on the Mod
-      #    and test and unit test is separately...
-      # BUT can't anon fns.
-      # Enforces one step per module - do we basically have objects now.
-      # overhead of creating dem modules...
+  describe "add_step/2" do
+    test "we can add a step" do
+      add_one = fn number -> number + 1 end
+      add_two = fn n -> n + 2 end
+      undo = fn _error, _state -> "some side effect" end
 
-      # 3. Create function structs that we can assert on. This is weird though and not normal and
-      #    requires caution to avoid the struct drifting from the thing it actually does. obs no
+      pipeline =
+        PipeLine.new(1)
+        |> PipeLine.add_step(add_one)
+        |> PipeLine.add_step({add_two, undo})
 
-      # we don't want callbacks really, we want promises ? Or like monads are they ? curried fns ?
-      # we want to compose their function with ours (which is run it.)
+      assert pipeline.state == 1
+      {[%PipeLine.Step{} = one_step, %PipeLine.Step{} = two_step], _} = pipeline.steps
 
-      # These have implications for the userland code. I think 1. is the least bad.
+      assert one_step.action == add_one
+      assert two_step.action == add_two
+      assert two_step.on_error == undo
 
-      # assert pipe_line == %PipeLine{errors: [], state: %{}, steps: {[%PipeLine.Step{action: #Function<2.24868623/1 in PipeLine.Step.new/2>, on_error: #Function<1.24868623/2 in PipeLine.Step.new/2>}], []}, valid?: true}
+      pipeline =
+        PipeLine.new(%{})
+        |> PipeLine.add_step(PipeLine.Step.new(add_one))
+        |> PipeLine.add_step(PipeLine.Step.new(add_two, on_error: undo))
+
+      assert pipeline.state == %{}
+      {[%PipeLine.Step{} = one_step, %PipeLine.Step{} = two_step], _} = pipeline.steps
+
+      assert one_step.action == add_one
+      assert two_step.action == add_two
+      assert two_step.on_error == undo
+    end
+  end
+
+  describe "run_while" do
+    test "runs the pipeline" do
     end
   end
 end
-
-# create_pipeline([
-#   # These can all be modules that have behaviour and therefore can be mocks.
-#   {add_one, subtract_one},
-#   add_two
-# ])
-
-# def create_pipeline(steps) do
-#   Enum.reduce(steps, PipeLine.new(%{}), fn
-#     {step, on_error}, pipe -> PipeLine.add_step(pipe, step)
-#     step, pipe ->
-#   end)
-# end
