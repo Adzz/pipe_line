@@ -77,6 +77,29 @@ defmodule PipeLineTest do
 
   describe "run_while" do
     test "runs the pipeline" do
+      # I don't like that steps have to now have this return value. BUT you can always
+      # wrap them in higher order stuff... That would let you re-use old ones.
+
+      continue_step = fn step ->
+        fn state ->
+          case step.(state) do
+            {:ok, stuff} -> {:cont, stuff}
+            {:error, stuff} -> {:halt,  stuff}
+          end
+        end
+      end
+
+      add_one = fn  number -> {:ok, number + 1} end
+      add_two = fn n -> {:ok, n + 2} end
+      undo = fn _error, _state -> "some side effect" end
+
+      pipeline =
+        PipeLine.new(1)
+        |> PipeLine.add_step(continue_step.(add_one))
+        |> PipeLine.add_step({continue_step.(add_two), undo})
+        |> PipeLine.run_while()
+        |> IO.inspect(limit: :infinity, label: "")
+
     end
   end
 end

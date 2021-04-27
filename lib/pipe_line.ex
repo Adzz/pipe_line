@@ -116,7 +116,7 @@ defmodule PipeLine do
       {:cont, state} -> do_run_while_do_run_run(%{next_step(pipeline) | state: state})
       {:suspend, state} -> {:suspended, %{next_step(pipeline) | state: state}, &run_while/1}
       {:halt, term} -> {:halted, term}
-      _ -> raise "Error"
+      _ -> raise "Invalid Step Error"
     end
   end
 
