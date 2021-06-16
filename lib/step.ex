@@ -105,7 +105,7 @@ defmodule PipeLine.Step do
   ```elixir
   def execute(%PipeLine{steps: steps} = pipeline) do
     Enum.reduce_while(steps, pipeline, fn step, acc ->
-      case PipeLine.Step.run_action(step, acc) do
+      case PipeLine.Step.run(step, acc) do
         {:ok, %PipeLine{} = result} -> {:cont, result}
         {:error, term} -> {:halt, {:error, term}}
       end
@@ -117,7 +117,7 @@ defmodule PipeLine.Step do
   allows me to change the internal representation of a PipeLine.Step without risking
   breaking your programs.
   """
-  def run_action(%__MODULE__{action: action}, %PipeLine{} = pipeline) do
+  def run(%__MODULE__{action: action}, %PipeLine{} = pipeline) do
     action.(pipeline.state)
   end
 end

@@ -4,11 +4,11 @@ defmodule PipeLineTest do
 
   describe "new/1" do
     test "Creates an empty struct with the given state" do
-      assert PipeLine.new(%{}) == %PipeLine{errors: [], state: %{}, steps: {[], []}, valid?: true}
-      assert PipeLine.new(1) == %PipeLine{errors: [], state: 1, steps: {[], []}, valid?: true}
-      assert PipeLine.new("1") == %PipeLine{errors: [], state: "1", steps: {[], []}, valid?: true}
-      assert PipeLine.new([]) == %PipeLine{errors: [], state: [], steps: {[], []}, valid?: true}
-      assert PipeLine.new(:a) == %PipeLine{errors: [], state: :a, steps: {[], []}, valid?: true}
+      assert PipeLine.new(%{}) == %PipeLine{state: %{}, steps: {[], []}}
+      assert PipeLine.new(1) == %PipeLine{state: 1, steps: {[], []}}
+      assert PipeLine.new("1") == %PipeLine{state: "1", steps: {[], []}}
+      assert PipeLine.new([]) == %PipeLine{state: [], steps: {[], []}}
+      assert PipeLine.new(:a) == %PipeLine{state: :a, steps: {[], []}}
     end
   end
 
@@ -18,14 +18,19 @@ defmodule PipeLineTest do
       add_two = fn n -> n + 2 end
       undo = fn _error, _state -> "some side effect" end
 
-      pipeline = PipeLine.new(1) |> PipeLine.add_steps([add_one, {add_two, undo}])
+      pipeline =
+        PipeLine.new(1)
+        |> PipeLine.add_steps([
+          add_one,
+          {add_two, on_error: undo}
+        ])
 
       assert pipeline.state == 1
       {[%PipeLine.Step{} = one_step, %PipeLine.Step{} = two_step], _} = pipeline.steps
 
       assert one_step.action == add_one
       assert two_step.action == add_two
-      assert two_step.on_error == undo
+      assert two_step.on_error == [on_error: undo]
 
       pipeline =
         PipeLine.new(%{})
@@ -50,18 +55,6 @@ defmodule PipeLineTest do
       undo = fn _error, _state -> "some side effect" end
 
       pipeline =
-        PipeLine.new(1)
-        |> PipeLine.add_step(add_one)
-        |> PipeLine.add_step({add_two, undo})
-
-      assert pipeline.state == 1
-      {[%PipeLine.Step{} = one_step, %PipeLine.Step{} = two_step], _} = pipeline.steps
-
-      assert one_step.action == add_one
-      assert two_step.action == add_two
-      assert two_step.on_error == undo
-
-      pipeline =
         PipeLine.new(%{})
         |> PipeLine.add_step(PipeLine.Step.new(add_one))
         |> PipeLine.add_step(PipeLine.Step.new(add_two, on_error: undo))
@@ -73,33 +66,96 @@ defmodule PipeLineTest do
       assert two_step.action == add_two
       assert two_step.on_error == undo
     end
-  end
 
-  describe "run_while" do
-    test "runs the pipeline" do
-      # I don't like that steps have to now have this return value. BUT you can always
-      # wrap them in higher order stuff... That would let you re-use old ones.
-
-      continue_step = fn step ->
-        fn state ->
-          case step.(state) do
-            {:ok, stuff} -> {:cont, stuff}
-            {:error, stuff} -> {:halt,  stuff}
-          end
-        end
-      end
-
-      add_one = fn  number -> {:ok, number + 1} end
-      add_two = fn n -> {:ok, n + 2} end
+    test "we can pass a function and have steps made for us" do
+      add_one = fn number -> number + 1 end
+      add_two = fn n -> n + 2 end
       undo = fn _error, _state -> "some side effect" end
 
       pipeline =
         PipeLine.new(1)
-        |> PipeLine.add_step(continue_step.(add_one))
-        |> PipeLine.add_step({continue_step.(add_two), undo})
-        |> PipeLine.run_while()
-        |> IO.inspect(limit: :infinity, label: "")
+        |> PipeLine.add_step(add_one)
+        |> PipeLine.add_step(add_two, on_error: undo)
 
+      assert pipeline.state == 1
+      {[%PipeLine.Step{} = one_step, %PipeLine.Step{} = two_step], _} = pipeline.steps
+
+      assert one_step.action == add_one
+      assert two_step.action == add_two
+      assert two_step.on_error == undo
+    end
+  end
+
+  describe "execute_while" do
+    test "the executor will continue if the state is continue" do
+      add_one = fn number -> {:ok, number + 1} end
+      add_two = fn n -> {:ok, n + 2} end
+      undo = fn _error, _state -> "some side effect" end
+
+      pipeline_result =
+        PipeLine.new(1)
+        |> PipeLine.add_step(add_one)
+        |> PipeLine.add_step(add_two, on_error: undo)
+        |> PipeLine.execute_while()
+
+      assert pipeline_result == 3
+    end
+
+    test "runs the pipeline" do
+      continue_step = fn step ->
+        fn state ->
+          case step.(state) |> IO.inspect(limit: :infinity, label: "sssssssss") do
+            {:ok, stuff} -> {:continue, stuff}
+            {:error, stuff} -> {:halt, stuff}
+          end
+        end
+      end
+
+      add_one = fn number -> {:ok, number + 1} end
+      add_two = fn n -> {:ok, n + 2} end
+      undo = fn _error, _state -> "some side effect" end
+
+      pipeline_result =
+        PipeLine.new(1)
+        |> PipeLine.add_step(continue_step.(add_one))
+        # What's nice about the KW list is that it is extensible, so we could have any status
+        # and then any callback associated with that status.
+        # on_compensate, on_excepion... etc etc.....
+        |> PipeLine.add_step(continue_step.(add_two), on_error: undo)
+        # Is this like map. Or reduce? Probs map in some weird way
+        # how do we handle the compensates then? They feel like just another pipeline.
+        # or perhaps a step that modifies the pipeline.
+        |> PipeLine.execute_while()
+
+      assert pipeline_result == 4
+    end
+
+    test "when we halt" do
+      # logg_step = fn step ->
+      #   IO.inspect("b4")
+      #   step.()
+      # end
+
+      continue_step = fn step ->
+        fn state ->
+          case step.(state) do
+            {:ok, stuff} -> {:continue, stuff}
+            {:error, stuff} -> {:halt, stuff}
+          end
+        end
+      end
+
+      add_one = fn number -> {:error, number + 1} end
+      add_two = fn n -> {:error, n + 2} end
+      undo = fn _error, _state -> "some side effect" end
+
+      pipeline_result =
+        PipeLine.new(1)
+        |> PipeLine.add_step(continue_step.(add_one))
+        |> PipeLine.add_step(continue_step.(add_two), on_error: undo)
+        |> PipeLine.execute_while()
+
+      assert pipeline_result == {:halted, 2}
     end
   end
 end
