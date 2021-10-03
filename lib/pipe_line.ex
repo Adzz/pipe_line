@@ -134,6 +134,11 @@ defmodule PipeLine do
               # we could have a status flag on the pipeline saying what track it is on.
               # switch_tracks. Journey.
               # This just lets us know what's executing I guess.
+              # This is basically generalising the undo/on_error functionality; We have some trigger
+              # which determines the next action to run - either you go to the next step in the
+              # pipeline or you "switch tracks" so to speak and trigger the on_xxx function. Though
+              # that might be cool will it be easy to reason about? Is there a better way to achieve
+              # the same idea?
               PipeLine.change_track(pipeline, :compensating)
               |> compensate_all(term)
 
